@@ -1,5 +1,6 @@
 import { Task } from './Task';
 import { addEventListener } from '@react-native-community/netinfo';
+import { debounce } from 'lodash';
 
 export class TaskManager {
   private static instance: TaskManager;
@@ -10,24 +11,33 @@ export class TaskManager {
 
   static getInstance(): TaskManager {
     if (!TaskManager.instance) {
+      console.log('[TASK_MANAGER] Creating a new instance of TaskManager');
       TaskManager.instance = new TaskManager();
+    } else {
+      console.log('[TASK_MANAGER] Returning existing instance of TaskManager');
     }
     return TaskManager.instance;
   }
 
   addTask(task: Task): void {
+    console.log(`[TASK_MANAGER] Adding task: ${task.name} with id: ${task.id}`);
     this.tasks.set(task.id, task);
   }
 
   getTask(id: string): Task | undefined {
+    console.log(`[TASK_MANAGER] Retrieving task with id: ${id}`);
     return this.tasks.get(id);
   }
 
   removeTask(id: string): void {
+    console.log(`[TASK_MANAGER] Removing task with id: ${id}`);
     this.tasks.delete(id);
   }
 
   listTasks(): Task[] {
+    console.log(
+      `[TASK_MANAGER] Listing all tasks, total count: ${this.tasks.size}`,
+    );
     return Array.from(this.tasks.values());
   }
 
@@ -36,27 +46,37 @@ export class TaskManager {
     if (task) {
       return await task.execute();
     } else {
-      throw new Error(`Task with id ${id} not found`);
+      throw new Error(`[TASK_MANAGER] Task with id ${id} not found`);
     }
   }
 
   async executeAllTasks() {
-    console.log('Network is connected, executing pending tasks...');
+    console.log(
+      '[TASK_MANAGER] Network is connected, executing pending tasks...',
+    );
     let pendingTasks: Task[];
     do {
       pendingTasks = this.listTasks().filter(task => task.status === 'pending');
       if (pendingTasks.length === 0 || this.isTaskManagerRunning) break;
 
-      console.log(`Found ${pendingTasks.length} pending tasks to execute.`);
+      console.log(
+        `[TASK_MANAGER] Found ${pendingTasks.length} pending tasks to execute.`,
+      );
       this.isTaskManagerRunning = true;
       // Execute all current pending tasks in parallel
       await Promise.all(
         pendingTasks.map(async task => {
           try {
             const result = await this.executeTask(task.id);
-            console.log(`Task ${task.name} executed successfully:`, result);
+            console.log(
+              `[TASK_MANAGER] Task ${task.name} executed successfully:`,
+              result,
+            );
           } catch (error) {
-            console.error(`Error executing task ${task.name}:`, error);
+            console.error(
+              `[TASK_MANAGER] Error executing task ${task.name}:`,
+              error,
+            );
           }
         }),
       );
@@ -66,16 +86,21 @@ export class TaskManager {
   }
 
   unsubscribe = addEventListener(state => {
-    if (state.isConnected && state.isInternetReachable) {
-      this.executeAllTasks();
-    } else {
-      console.warn('Network is disconnected, tasks will not be executed.');
-    }
+    debounce(() => {
+      if (state.isConnected && state.isInternetReachable) {
+        console.log('Executing tasks...');
+        this.executeAllTasks();
+      } else {
+        console.warn(
+          '[TASK_MANAGER] Network is disconnected, tasks will not be executed.',
+        );
+      }
+    }, 5000)();
   });
 
   clearTaskManager(): void {
     this.tasks.clear();
     this.unsubscribe();
-    console.log('TaskManager cleared.');
+    console.log('[TASK_MANAGER] TaskManager cleared.');
   }
 }
